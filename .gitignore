@@ -22,6 +22,12 @@ ENV/
 # Milvus volumes
 volumes/
 
+# Database
+*.db
+*.sqlite
+*.sqlite3
+files.db
+
 # OS
 .DS_Store
 Thumbs.db

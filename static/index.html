@@ -198,6 +198,13 @@
     <div class="container">
         <h1>📄 PDF RAG with Milvus</h1>
 
+        <!-- Files List Section -->
+        <div class="card">
+            <h2>📚 Uploaded Files</h2>
+            <button onclick="loadFiles()" id="loadFilesBtn" style="width: auto; margin-bottom: 15px;">Refresh Files List</button>
+            <div id="filesList"></div>
+        </div>
+
         <!-- Upload Section -->
         <div class="card">
             <h2>1. Upload Document</h2>
@@ -227,6 +234,12 @@
                 <label style="display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" id="showSimilarity" style="width: auto;">
                     Show cosine similarity scores
+                </label>
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="showQueryEmbedding" style="width: auto;">
+                    Show query embedding vector (1536 numbers)
                 </label>
             </div>
             <button onclick="queryDocument()" id="queryBtn">Query Document</button>
@@ -264,6 +277,86 @@
     <script>
         const API_BASE = 'http://localhost:8000';
 
+        async function loadFiles() {
+            const loadBtn = document.getElementById('loadFilesBtn');
+            const filesDiv = document.getElementById('filesList');
+
+            loadBtn.disabled = true;
+            loadBtn.innerHTML = '<span class="loading"></span>Loading...';
+            filesDiv.innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/files?limit=50`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    if (data.files && data.files.length > 0) {
+                        let html = `
+                            <div style="margin-bottom: 15px; padding: 15px; background: #e8f4f8; border-radius: 8px;">
+                                <strong>Statistics:</strong><br>
+                                Total Files: ${data.statistics.total_files} | 
+                                Total Chunks: ${data.statistics.total_chunks} | 
+                                Total Vectors: ${data.statistics.total_vectors} | 
+                                Total Size: ${data.statistics.total_size_mb} MB
+                            </div>
+                            <div style="display: grid; gap: 10px;">
+                        `;
+                        
+                        data.files.forEach((file) => {
+                            const uploadDate = new Date(file.uploaded_at).toLocaleString();
+                            const fileSizeMB = (file.file_size / (1024 * 1024)).toFixed(2);
+                            
+                            html += `
+                                <div class="vector-item" style="cursor: pointer;" onclick="selectFile('${file.file_id}')">
+                                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                                        <div style="flex: 1;">
+                                            <strong>📄 ${file.filename}</strong><br>
+                                            <span style="font-size: 0.9em; color: #666;">
+                                                File ID: <code>${file.file_id}</code><br>
+                                                Type: ${file.file_type} | 
+                                                Size: ${fileSizeMB} MB | 
+                                                Chunks: ${file.chunks_count} | 
+                                                Vectors: ${file.vectors_count}<br>
+                                                Uploaded: ${uploadDate}
+                                            </span>
+                                        </div>
+                                        <button onclick="event.stopPropagation(); selectFile('${file.file_id}')" 
+                                                style="width: auto; padding: 8px 15px; font-size: 14px; margin-left: 10px;">
+                                            Use This File
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        html += `</div>`;
+                        filesDiv.innerHTML = html;
+                    } else {
+                        filesDiv.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No files uploaded yet. Upload a document to get started!</p>';
+                    }
+                } else {
+                    showError(filesDiv, `Error: ${data.detail || 'Failed to load files'}`);
+                }
+            } catch (error) {
+                showError(filesDiv, `Error: ${error.message}`);
+            } finally {
+                loadBtn.disabled = false;
+                loadBtn.innerHTML = 'Refresh Files List';
+            }
+        }
+
+        function selectFile(fileId) {
+            document.getElementById('fileId').value = fileId;
+            document.getElementById('inspectFileId').value = fileId;
+            // Scroll to query section
+            document.querySelector('.card:nth-of-type(2)').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Load files on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            loadFiles();
+        });
+
         async function uploadPDF() {
             const fileInput = document.getElementById('pdfFile');
             const file = fileInput.files[0];
@@ -291,21 +384,32 @@
                 const data = await response.json();
 
                 if (response.ok) {
+                    const fileSizeMB = (data.file_size / (1024 * 1024)).toFixed(2);
                     showSuccess(resultDiv, `
                         <h3>✓ Upload Successful!</h3>
                         <div class="file-id-display">
                             <strong>File ID:</strong> ${data.file_id}<br>
+                            <strong>Filename:</strong> ${data.filename}<br>
+                            <strong>File Type:</strong> ${data.file_type}<br>
+                            <strong>File Size:</strong> ${fileSizeMB} MB<br>
                             <strong>Chunks Created:</strong> ${data.chunks_created}<br>
-                            <strong>Vector IDs Count:</strong> ${data.vector_ids_count}
+                            <strong>Vector IDs Count:</strong> ${data.vector_ids_count}<br>
+                            <strong>Uploaded At:</strong> ${new Date(data.uploaded_at).toLocaleString()}
                         </div>
                         <p style="margin-top: 10px;">
-                            <button onclick="copyToClipboard('${data.file_id}')" style="width: auto; padding: 8px 15px; font-size: 14px;">
+                            <button onclick="copyToClipboard('${data.file_id}')" style="width: auto; padding: 8px 15px; font-size: 14px; margin-right: 10px;">
                                 Copy File ID
+                            </button>
+                            <button onclick="loadFiles()" style="width: auto; padding: 8px 15px; font-size: 14px;">
+                                Refresh Files List
                             </button>
                         </p>
                     `);
                     // Auto-fill file ID in query form
                     document.getElementById('fileId').value = data.file_id;
+                    document.getElementById('inspectFileId').value = data.file_id;
+                    // Reload files list
+                    setTimeout(loadFiles, 500);
                 } else {
                     showError(resultDiv, `Error: ${data.detail || 'Upload failed'}`);
                 }
@@ -321,6 +425,7 @@
             const fileId = document.getElementById('fileId').value.trim();
             const query = document.getElementById('query').value.trim();
             const showSimilarity = document.getElementById('showSimilarity').checked;
+            const showQueryEmbedding = document.getElementById('showQueryEmbedding').checked;
             const queryBtn = document.getElementById('queryBtn');
             const resultDiv = document.getElementById('queryResult');
 
@@ -334,7 +439,7 @@
             resultDiv.innerHTML = '';
 
             try {
-                const response = await fetch(`${API_BASE}/query?show_similarity=${showSimilarity}`, {
+                const response = await fetch(`${API_BASE}/query?show_similarity=${showSimilarity}&show_query_embedding=${showQueryEmbedding}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -397,6 +502,30 @@
                         });
                         
                         html += `
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    // Add query embedding if available
+                    if (showQueryEmbedding && data.query_embedding) {
+                        const vector = data.query_embedding.vector || data.query_embedding.values || [];
+                        const dim = data.query_embedding.dimension || vector.length;
+                        const sample = data.query_embedding.sample_values || vector.slice(0, 10);
+                        const vectorStr = JSON.stringify(vector, null, 2);
+                        
+                        html += `
+                            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #764ba2;">
+                                <h3 style="color: #764ba2; margin-bottom: 10px;">Query Embedding</h3>
+                                <div style="font-size: 0.9em; color: #555; margin-bottom: 8px;">
+                                    <strong>Dimension:</strong> ${dim}<br>
+                                    <strong>Sample values (first 10):</strong> <code>${sample.map(v => v.toFixed(6)).join(', ')}</code>
+                                </div>
+                                <div style="margin-top: 10px;">
+                                    <strong>Full Vector (${dim} values):</strong>
+                                    <div style="background: #f0f0f0; padding: 15px; border-radius: 6px; margin-top: 5px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px; white-space: pre-wrap; word-wrap: break-word;">
+${vectorStr}
+                                    </div>
                                 </div>
                             </div>
                         `;

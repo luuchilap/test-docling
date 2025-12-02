@@ -4,7 +4,7 @@ RAG pipeline: embeddings generation and query processing
 import os
 import numpy as np
 from openai import OpenAI
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 from app.milvus_client import search_similar, get_or_create_collection
 
 
@@ -83,7 +83,13 @@ def calculate_cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     return float(cosine_sim)
 
 
-def retrieve_context(file_id: str, query: str, top_k: int = 5, return_similarities: bool = False):
+def retrieve_context(
+    file_id: str,
+    query: str,
+    top_k: int = 5,
+    return_similarities: bool = False,
+    query_embedding_override: Optional[List[float]] = None,
+):
     """
     Retrieve relevant chunks from Milvus for a query
     
@@ -96,7 +102,13 @@ def retrieve_context(file_id: str, query: str, top_k: int = 5, return_similariti
     print(f"     - Top K: {top_k}")
     
     collection = get_or_create_collection()
-    query_emb = query_embedding(query)
+    
+    # Use precomputed embedding if provided (to avoid duplicate OpenAI calls)
+    if query_embedding_override is not None:
+        query_emb = query_embedding_override
+        print(f"  🔄 Step 2a: Using precomputed query embedding (dim={len(query_emb)})")
+    else:
+        query_emb = query_embedding(query)
     
     print(f"  🔄 Step 3: Performing vector similarity search...")
     results = search_similar(collection, query_emb, file_id, top_k=top_k, include_embeddings=return_similarities)

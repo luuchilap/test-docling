@@ -61,6 +61,16 @@ def ensure_connection(host="localhost", port=19530):
             raise Exception(f"Milvus connection failed. Make sure Milvus is running: docker run -p 19530:19530 milvusdb/milvus:latest")
 
 
+def drop_collection_if_exists():
+    """Drop the collection if it exists (use with caution!)"""
+    ensure_connection()
+    if utility.has_collection(COLLECTION_NAME):
+        utility.drop_collection(COLLECTION_NAME)
+        print(f"✓ Dropped collection: {COLLECTION_NAME}")
+        return True
+    return False
+
+
 def get_or_create_collection():
     """Get existing collection or create a new one"""
     # Ensure connection exists
@@ -69,6 +79,19 @@ def get_or_create_collection():
     if utility.has_collection(COLLECTION_NAME):
         collection = Collection(COLLECTION_NAME)
         print(f"✓ Found existing collection: {COLLECTION_NAME}")
+        
+        # Verify schema matches (basic check)
+        try:
+            schema = collection.schema
+            field_names = [field.name for field in schema.fields]
+            expected_fields = ["id", "file_id", "chunk_text", "embedding"]
+            
+            if set(field_names) != set(expected_fields):
+                print(f"⚠ Warning: Collection schema mismatch. Expected: {expected_fields}, Got: {field_names}")
+                print(f"  Consider dropping and recreating the collection if issues persist.")
+                print(f"  You can use: from app.milvus_client import drop_collection_if_exists; drop_collection_if_exists()")
+        except Exception as e:
+            print(f"⚠ Could not verify collection schema: {e}")
     else:
         collection = Collection(
             name=COLLECTION_NAME,
@@ -90,28 +113,87 @@ def get_or_create_collection():
         print(f"✓ Created HNSW index on embedding field")
     
     # Load collection
-    collection.load()
-    print(f"✓ Collection loaded and ready")
+    try:
+        collection.load()
+        print(f"✓ Collection loaded and ready")
+    except Exception as e:
+        print(f"✗ Failed to load collection: {e}")
+        raise
     
     return collection
 
 
 def insert_chunks(collection, file_id, chunks, embeddings):
     """Insert chunks and embeddings into Milvus"""
+    # Validate inputs
+    if not file_id or not file_id.strip():
+        raise ValueError("file_id cannot be empty")
+    if not chunks or len(chunks) == 0:
+        raise ValueError("chunks cannot be empty")
+    if not embeddings or len(embeddings) == 0:
+        raise ValueError("embeddings cannot be empty")
+    if len(chunks) != len(embeddings):
+        raise ValueError(f"chunks and embeddings must have the same length: {len(chunks)} != {len(embeddings)}")
+    
     print(f"  🔄 Step 6: Inserting vectors into Milvus...")
     print(f"     - Collection: {collection.name}")
     print(f"     - Chunks to insert: {len(chunks)}")
     print(f"     - Embedding dimension: {len(embeddings[0]) if embeddings else 0}")
+    print(f"     - File ID: {file_id}")
     
-    # Prepare entities
+    # Clean and validate file_id
+    file_id_clean = file_id.strip()
+    if len(file_id_clean) > 255:
+        raise ValueError(f"file_id exceeds max length of 255: {len(file_id_clean)} characters")
+    
+    # Validate chunk_text lengths (max 10000 characters per schema)
+    for i, chunk in enumerate(chunks):
+        if len(chunk) > 10000:
+            print(f"     ⚠ Warning: Chunk {i} exceeds max length (10000), truncating...")
+            chunks[i] = chunk[:10000]
+    
+    # Validate embedding dimensions
+    expected_dim = 1536
+    for i, emb in enumerate(embeddings):
+        if len(emb) != expected_dim:
+            raise ValueError(f"Embedding {i} has wrong dimension: {len(emb)} != {expected_dim}")
+    
+    # Prepare entities - ensure all are lists
+    file_ids = [file_id_clean] * len(chunks)
+    
+    # Ensure chunks is a list of strings
+    if not isinstance(chunks, list):
+        chunks = list(chunks)
+    
+    # Ensure embeddings is a list of lists
+    if not isinstance(embeddings, list):
+        embeddings = list(embeddings)
+    
     entities = [
-        [file_id] * len(chunks),  # file_id
-        chunks,  # chunk_text
-        embeddings  # embedding
+        file_ids,  # file_id - list of strings
+        chunks,    # chunk_text - list of strings
+        embeddings # embedding - list of lists of floats
     ]
     
     print(f"     - Preparing {len(chunks)} entities for insertion...")
-    insert_result = collection.insert(entities)
+    print(f"     - File ID length: {len(file_id_clean)} (max 255)")
+    print(f"     - Sample chunk length: {len(chunks[0]) if chunks else 0} (max 10000)")
+    print(f"     - Sample embedding length: {len(embeddings[0]) if embeddings else 0} (expected 1536)")
+    
+    try:
+        insert_result = collection.insert(entities)
+    except Exception as e:
+        error_msg = str(e)
+        print(f"     ✗ Insert failed: {error_msg}")
+        print(f"     - File ID: '{file_id_clean}'")
+        print(f"     - File ID type: {type(file_id_clean)}")
+        print(f"     - File IDs list type: {type(file_ids)}")
+        print(f"     - File IDs list length: {len(file_ids)}")
+        print(f"     - Chunks type: {type(chunks)}")
+        print(f"     - Chunks length: {len(chunks)}")
+        print(f"     - Embeddings type: {type(embeddings)}")
+        print(f"     - Embeddings length: {len(embeddings)}")
+        raise
     print(f"     - Entities inserted, flushing to disk...")
     collection.flush()
     print(f"     - Flush complete")
@@ -147,9 +229,14 @@ def search_similar(collection, query_embedding, file_id, top_k=5, include_embedd
         "params": {"ef": 100}
     }
     
+    # Validate file_id
+    if not file_id or not file_id.strip():
+        raise ValueError("file_id cannot be empty")
+    
     # Use single quotes for VARCHAR field comparison in Milvus
     # Escape single quotes in file_id if present
-    escaped_file_id = file_id.replace("'", "\\'")
+    file_id_clean = file_id.strip()
+    escaped_file_id = file_id_clean.replace("'", "\\'").replace('"', '\\"')
     expr = f"file_id == '{escaped_file_id}'"
     print(f"     - Filter expression: {expr}")
     
@@ -194,7 +281,8 @@ def inspect_vectors(collection, file_id=None, limit=10, full_content=False, show
         # Build expression filter
         expr = None
         if file_id and file_id.strip():
-            escaped_file_id = file_id.strip().replace("'", "\\'")
+            file_id_clean = file_id.strip()
+            escaped_file_id = file_id_clean.replace("'", "\\'").replace('"', '\\"')
             expr = f"file_id == '{escaped_file_id}'"
         
         # Use search to get vectors (with a large limit to get all matching)
@@ -224,7 +312,8 @@ def inspect_vectors(collection, file_id=None, limit=10, full_content=False, show
         output_fields = ["id", "file_id", "chunk_text"]
         
         if file_id and file_id.strip():
-            escaped_file_id = file_id.strip().replace("'", "\\'")
+            file_id_clean = file_id.strip()
+            escaped_file_id = file_id_clean.replace("'", "\\'").replace('"', '\\"')
             expr = f"file_id == '{escaped_file_id}'"
             results = collection.query(
                 expr=expr,

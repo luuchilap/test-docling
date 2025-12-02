@@ -62,6 +62,7 @@ This will start:
 - Milvus Standalone on port 19530
 - etcd (metadata storage) on port 2379
 - MinIO (object storage) on ports 9000 and 9001
+- **Attu** (Milvus GUI) on port 3000
 
 Check status:
 ```bash
@@ -77,6 +78,30 @@ Stop Milvus:
 ```bash
 docker-compose down
 ```
+
+### Access Attu (Milvus GUI)
+
+Attu is a web-based graphical interface for visualizing and managing Milvus. After starting the services, access it at:
+
+```
+http://localhost:3000
+```
+
+**First-time setup:**
+1. Open `http://localhost:3000` in your browser
+2. You'll see the Attu connection screen
+3. Enter the Milvus connection details:
+   - **Milvus Address**: `localhost:19530`
+   - **Username/Password**: Leave empty (default Milvus setup doesn't require authentication)
+4. Click "Connect" to establish the connection
+
+**What you can do with Attu:**
+- 📊 **View Collections**: See all your collections and their schemas
+- 🔍 **Browse Data**: View stored vectors, chunks, and metadata
+- 📈 **Visualize Vectors**: See vector dimensions and statistics
+- 🔎 **Query Data**: Execute queries and filter data
+- 📉 **Monitor Performance**: View collection statistics and health
+- 🛠️ **Manage Collections**: Create, delete, and modify collections
 
 **Option B: Using Milvus Lite (Embedded, No Docker)**
 
@@ -105,15 +130,19 @@ http://localhost:8000
 ```
 
 You'll see a beautiful web interface where you can:
-- Upload PDF files
-- Query documents
-- Inspect stored vectors
+- View all uploaded files with metadata
+- Upload documents (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV, Images)
+- Query documents with cosine similarity scores
+- Inspect stored vectors and embeddings
+
+**Also available:**
+- **Attu GUI**: Visualize Milvus data at `http://localhost:3000` (requires Docker Compose)
 
 ## 📖 API Endpoints
 
 ### 1. Upload Document
 
-Upload a document file (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV, or Images) and store its embeddings in Milvus.
+Upload a document file (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV, or Images) and store its embeddings in Milvus. File metadata is automatically saved to a SQLite database.
 
 **Supported Formats:**
 - Documents: PDF, DOCX, PPTX, XLSX
@@ -136,8 +165,12 @@ curl -X POST -F "file=@image.png" http://localhost:8000/upload-pdf
 ```json
 {
   "file_id": "file_20251202_123412_abc12345",
+  "filename": "document.pdf",
+  "file_type": "PDF",
+  "file_size": 2567890,
   "chunks_created": 15,
-  "vector_ids_count": 15
+  "vector_ids_count": 15,
+  "uploaded_at": "2025-12-02T12:34:12.123456"
 }
 ```
 
@@ -163,7 +196,50 @@ curl -X POST http://localhost:8000/query \
 }
 ```
 
-### 3. Inspect Vectors
+### 3. List Uploaded Files
+
+Get a list of all uploaded files with metadata:
+
+```bash
+curl "http://localhost:8000/files?limit=50"
+```
+
+**Response:**
+```json
+{
+  "files": [
+    {
+      "id": 1,
+      "file_id": "file_20251202_123412_abc12345",
+      "filename": "document.pdf",
+      "file_type": "PDF",
+      "file_size": 2567890,
+      "chunks_count": 15,
+      "vectors_count": 15,
+      "uploaded_at": "2025-12-02T12:34:12",
+      "status": "completed"
+    }
+  ],
+  "statistics": {
+    "total_files": 5,
+    "total_chunks": 75,
+    "total_vectors": 75,
+    "total_size_bytes": 12839450,
+    "total_size_mb": 12.24
+  },
+  "count": 5
+}
+```
+
+### 4. Get File Information
+
+Get detailed metadata for a specific file:
+
+```bash
+curl "http://localhost:8000/files/file_20251202_123412_abc12345"
+```
+
+### 5. Inspect Vectors
 
 Inspect stored vectors for a specific file or all files.
 
@@ -190,7 +266,7 @@ curl "http://localhost:8000/inspect-vectors?limit=10"
 }
 ```
 
-### 4. Web UI
+### 6. Web UI
 
 A simple, modern HTML interface is available at:
 - Web UI: `http://localhost:8000`
@@ -201,7 +277,7 @@ The UI provides:
 - Vector inspection tool
 - Real-time feedback and error handling
 
-### 5. API Documentation
+### 7. API Documentation
 
 Interactive API documentation (Swagger UI) is available at:
 - Swagger UI: `http://localhost:8000/docs`
@@ -225,6 +301,7 @@ docling4/
 ├── .env.example            # Example environment file
 ├── docker-compose.yml      # Docker Compose config for Milvus (etcd, minio, standalone)
 ├── requirements.txt        # Python dependencies
+├── files.db               # SQLite database (created automatically)
 ├── README.md              # This file
 └── general_requirements.txt
 ```
