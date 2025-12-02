@@ -1,0 +1,113 @@
+AI Coding Assistant — Development Instructions (MVP: PDF Upload + RAG + Milvus)
+🎯 Goal
+Build a minimal viable product (MVP) that:
+Allows users to upload PDF files.
+Extracts text from the PDF.
+Generates embeddings using OpenAI embeddings API.
+Stores embeddings in Milvus as a vector database.
+Allows users to query questions, retrieves relevant chunks from Milvus using vector search, and answers using a simple RAG pipeline.
+Runs locally only (no deployment, no CI/CD).
+This MVP should be intentionally simple, with minimal abstractions.
+The purpose is to observe how Milvus stores vectors and understand the data flow.
+🏗 Tech Stack Requirements
+Backend
+FastAPI (HTTP API for upload + query)
+Milvus (standalone or Docker)
+PyMilvus (Milvus Python SDK)
+OpenAI Python SDK (for embeddings + chat completion)
+A simple PDF parser (pypdf)
+Vector Database
+Milvus Standalone
+Collection schema:
+id (primary key, auto ID)
+file_id (string)
+chunk_text (string)
+embedding (float vector 1536)
+Frontend
+No frontend required
+Or optionally a very simple HTML form built with FastAPI templates
+🧩 Required Features
+1. File Upload Endpoint
+Accept a single PDF file
+Parse text into chunks
+Call OpenAI embedding model (text-embedding-3-small)
+Insert chunks + embeddings into Milvus
+Return file_id so the user can query that file later
+2. Query Endpoint
+Accept:
+file_id
+query (string)
+Convert query → embedding
+Vector similarity search in Milvus
+Retrieve top-k chunks
+Pass them into LLM prompt
+Example:
+You must answer from the provided context only.
+Context:
+{{ top_k_text }}
+User question: {{ query }}
+3. Milvus Requirements
+Use collection with 1536 dimension (OpenAI embedding size)
+Use HNSW or IVF_FLAT index
+Run on localhost only
+Provide a simple script or Swagger endpoint to inspect stored vectors for educational purposes
+📁 Project Structure (Simple MVP)
+/app
+  ├── main.py
+  ├── rag.py
+  ├── milvus_client.py
+  ├── pdf_utils.py
+  └── models
+       └── schema.py
+.env   # store OPENAI_API_KEY
+requirements.txt
+README.md
+Keep it simple—no classes unless absolutely necessary.
+🚀 Expected Output
+The AI Coding Assistant must produce:
+✔ Fully working FastAPI backend with:
+/upload-pdf
+/query
+/inspect-vectors (optional)
+✔ Proper Milvus connection + collection creation
+✔ Clean, readable code (no over engineering)
+✔ Example cURL commands / Swagger docs
+✔ Minimal error handling
+✔ Clear printed logs showing:
+chunks inserted
+vector dimension
+vector IDs
+✔ Instructions on how to run Milvus locally:
+Either:
+docker pull milvusdb/milvus:latest
+docker run -p 19530:19530 milvusdb/milvus:latest
+or use Milvus standalone.
+🧪 Workflow Demonstration
+The final system must let the user do this:
+1. Upload PDF
+curl -X POST -F "file=@demo.pdf" http://localhost:8000/upload-pdf
+Response:
+{
+  "file_id": "file_20251202_123412"
+}
+2. Query the document
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"file_id": "file_20251202_123412", "query": "What is the conclusion?"}'
+3. Inspect stored vectors
+Should return something like:
+[
+  {
+    "id": 123,
+    "file_id": "file_20251202_123412",
+    "vector_dim": 1536,
+    "preview": "The company aims to ..."
+  }
+]
+🚫 Things NOT Required
+No UI/UX design
+No authentication
+No full-text search
+No advanced RAG optimization
+No Docker for API (only Milvus can use Docker)
+No multitenancy or multi-file organization
