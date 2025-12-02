@@ -14,7 +14,7 @@ import tempfile
 import os
 
 from app.milvus_client import connect_milvus, get_or_create_collection, insert_chunks, inspect_vectors
-from app.pdf_utils import extract_text_from_pdf, chunk_text
+from app.pdf_utils import extract_text_from_document, chunk_text, is_supported_file, get_file_type, SUPPORTED_EXTENSIONS
 from app.rag import generate_embeddings, retrieve_context, generate_answer, calculate_cosine_similarity
 
 # Load environment variables
@@ -69,33 +69,57 @@ class QueryResponse(BaseModel):
 @app.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...)):
     """
-    Upload a PDF file, extract text, generate embeddings, and store in Milvus
+    Upload a document file (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV, Images), 
+    extract text, generate embeddings, and store in Milvus
+    
+    Supported formats: PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV, PNG, JPEG, TIFF, BMP, WEBP
     """
-    if not file.filename.endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="File must be a PDF")
+    # Check if file format is supported
+    if not is_supported_file(file.filename):
+        supported = ", ".join(SUPPORTED_EXTENSIONS.keys())
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported file format. Supported formats: {supported}"
+        )
+    
+    # Get file extension for temp file
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    file_type = get_file_type(file.filename)
     
     # Generate unique file_id
     file_id = f"file_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     
-    # Save uploaded file temporarily
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+    # Save uploaded file temporarily with original extension
+    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
         content = await file.read()
         tmp_file.write(content)
         tmp_file_path = tmp_file.name
     
     try:
-        # Extract text from PDF
-        print(f"\n📄 Processing PDF: {file.filename}")
-        text = extract_text_from_pdf(tmp_file_path)
+        # Extract text from document
+        print(f"\n{'='*60}")
+        print(f"📄 UPLOAD PROCESSING: {file.filename}")
+        print(f"{'='*60}")
+        print(f"File ID: {file_id}")
+        print(f"File Type: {file_type}")
+        print()
+        
+        text = extract_text_from_document(tmp_file_path, file.filename)
         
         if not text.strip():
-            raise HTTPException(status_code=400, detail="PDF contains no extractable text")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"{file_type} contains no extractable text"
+            )
         
         # Chunk the text
         chunks = chunk_text(text)
         
         if not chunks:
-            raise HTTPException(status_code=400, detail="No chunks created from PDF")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"No chunks created from {file_type}"
+            )
         
         # Generate embeddings
         embeddings = generate_embeddings(chunks)
@@ -113,7 +137,11 @@ async def upload_pdf(file: UploadFile = File(...)):
                 )
             raise
         
-        print(f"✓ Upload complete: {file_id}\n")
+        print()
+        print(f"{'='*60}")
+        print(f"✓ UPLOAD COMPLETE: {file_id}")
+        print(f"{'='*60}")
+        print()
         
         return {
             "file_id": file_id,
@@ -121,9 +149,14 @@ async def upload_pdf(file: UploadFile = File(...)):
             "vector_ids_count": len(vector_ids)
         }
     
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"✗ Error processing PDF: {e}")
-        raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
+        print(f"✗ Error processing document: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error processing document: {str(e)}"
+        )
     
     finally:
         # Clean up temporary file
@@ -140,8 +173,13 @@ async def query_document(request: QueryRequest, show_similarity: bool = False):
     - show_similarity: If True, returns cosine similarity scores for each chunk
     """
     try:
-        print(f"\n🔍 Querying file_id: {request.file_id}")
-        print(f"   Question: {request.query}")
+        print(f"\n{'='*60}")
+        print(f"🔍 QUERY PROCESSING")
+        print(f"{'='*60}")
+        print(f"File ID: {request.file_id}")
+        print(f"Query: {request.query}")
+        print(f"Show Similarity: {show_similarity}")
+        print()
         
         # Retrieve relevant context with similarity scores if requested
         if show_similarity:
@@ -164,7 +202,11 @@ async def query_document(request: QueryRequest, show_similarity: bool = False):
         # Generate answer
         answer = generate_answer(request.query, context_chunks)
         
-        print(f"✓ Query complete\n")
+        print()
+        print(f"{'='*60}")
+        print(f"✓ QUERY COMPLETE")
+        print(f"{'='*60}")
+        print()
         
         response = {
             "answer": answer,
@@ -241,7 +283,7 @@ async def root():
     return {
         "message": "PDF RAG with Milvus API",
         "endpoints": {
-            "upload": "POST /upload-pdf",
+            "upload": "POST /upload-pdf (supports PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV, Images)",
             "query": "POST /query",
             "inspect": "GET /inspect-vectors?file_id=<file_id>&limit=10",
             "docs": "GET /docs",

@@ -4,10 +4,13 @@ pymilvus==2.3.4
 milvus==2.3.4
 openai>=1.12.0
 pypdf==3.17.4
+docling>=2.0.0
 python-dotenv==1.0.0
-pydantic==2.5.0
+pydantic>=2.6.0,<3.0.0
 python-multipart==0.0.6
 numpy>=1.24.0
 marshmallow>=3.13.0
-environs>=10.0.0
+# Note: environs will be installed by pymilvus (<=9.5.0)
+# After installation completes, upgrade environs for marshmallow 4.x compatibility:
+# pip install "environs==11.0.0"
 

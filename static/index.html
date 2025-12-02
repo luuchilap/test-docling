@@ -200,12 +200,15 @@
 
         <!-- Upload Section -->
         <div class="card">
-            <h2>1. Upload PDF</h2>
+            <h2>1. Upload Document</h2>
             <div class="form-group">
-                <label for="pdfFile">Select PDF File:</label>
-                <input type="file" id="pdfFile" accept=".pdf">
+                <label for="pdfFile">Select Document File:</label>
+                <input type="file" id="pdfFile" accept=".pdf,.docx,.pptx,.xlsx,.md,.html,.htm,.csv,.png,.jpg,.jpeg,.tiff,.bmp,.webp">
+                <p style="font-size: 0.85em; color: #666; margin-top: 5px;">
+                    Supported formats: PDF, DOCX, PPTX, XLSX, Markdown, HTML, CSV, PNG, JPEG, TIFF, BMP, WEBP
+                </p>
             </div>
-            <button onclick="uploadPDF()" id="uploadBtn">Upload PDF</button>
+            <button onclick="uploadPDF()" id="uploadBtn">Upload Document</button>
             <div id="uploadResult"></div>
         </div>
 
@@ -268,7 +271,7 @@
             const resultDiv = document.getElementById('uploadResult');
 
             if (!file) {
-                showError(resultDiv, 'Please select a PDF file');
+                showError(resultDiv, 'Please select a document file');
                 return;
             }
 

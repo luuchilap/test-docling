@@ -98,17 +98,36 @@ def get_or_create_collection():
 
 def insert_chunks(collection, file_id, chunks, embeddings):
     """Insert chunks and embeddings into Milvus"""
+    print(f"  🔄 Step 6: Inserting vectors into Milvus...")
+    print(f"     - Collection: {collection.name}")
+    print(f"     - Chunks to insert: {len(chunks)}")
+    print(f"     - Embedding dimension: {len(embeddings[0]) if embeddings else 0}")
+    
+    # Prepare entities
     entities = [
         [file_id] * len(chunks),  # file_id
         chunks,  # chunk_text
         embeddings  # embedding
     ]
     
+    print(f"     - Preparing {len(chunks)} entities for insertion...")
     insert_result = collection.insert(entities)
+    print(f"     - Entities inserted, flushing to disk...")
     collection.flush()
+    print(f"     - Flush complete")
     
-    print(f"✓ Inserted {len(chunks)} chunks for file_id: {file_id}")
-    print(f"  Vector IDs: {insert_result.primary_keys[:5]}..." if len(insert_result.primary_keys) > 5 else f"  Vector IDs: {insert_result.primary_keys}")
+    # Calculate storage estimate
+    total_vectors = len(insert_result.primary_keys)
+    vector_size_bytes = len(embeddings[0]) * 4 if embeddings else 0  # 4 bytes per float
+    total_vector_size = total_vectors * vector_size_bytes
+    total_text_size = sum(len(c) for c in chunks)
+    
+    print(f"  ✓ Vector Storage Complete:")
+    print(f"     - Vectors inserted: {total_vectors}")
+    print(f"     - Vector IDs: {insert_result.primary_keys[:5]}{'...' if len(insert_result.primary_keys) > 5 else ''}")
+    print(f"     - Estimated vector storage: {total_vector_size / 1024:.2f} KB")
+    print(f"     - Text storage: {total_text_size:,} characters")
+    print(f"     - File ID: {file_id}")
     
     return insert_result.primary_keys
 
@@ -117,6 +136,11 @@ def search_similar(collection, query_embedding, file_id, top_k=5, include_embedd
     """Search for similar chunks using vector similarity"""
     # Ensure connection exists
     ensure_connection()
+    
+    print(f"     - Collection: {collection.name}")
+    print(f"     - Search metric: L2 (Euclidean distance)")
+    print(f"     - Top K: {top_k}")
+    print(f"     - Query vector dimension: {len(query_embedding)}")
     
     search_params = {
         "metric_type": "L2",
@@ -127,12 +151,15 @@ def search_similar(collection, query_embedding, file_id, top_k=5, include_embedd
     # Escape single quotes in file_id if present
     escaped_file_id = file_id.replace("'", "\\'")
     expr = f"file_id == '{escaped_file_id}'"
+    print(f"     - Filter expression: {expr}")
     
     # Include embeddings if needed for cosine similarity calculation
     output_fields = ["file_id", "chunk_text"]
     if include_embeddings:
         output_fields.append("embedding")
+        print(f"     - Including embeddings in results")
     
+    print(f"     - Executing vector search...")
     results = collection.search(
         data=[query_embedding],
         anns_field="embedding",
@@ -141,6 +168,8 @@ def search_similar(collection, query_embedding, file_id, top_k=5, include_embedd
         expr=expr,
         output_fields=output_fields
     )
+    
+    print(f"     ✓ Search complete, found {len(results[0])} results")
     
     return results[0]  # Return first query result
 

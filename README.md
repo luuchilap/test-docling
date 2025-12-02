@@ -1,13 +1,14 @@
-# PDF RAG with Milvus - MVP
+# Multi-Format Document RAG with Milvus - MVP
 
-A minimal viable product for PDF upload, text extraction, embedding generation, and RAG-based querying using Milvus as the vector database.
+A minimal viable product for document upload (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV, Images), text extraction, embedding generation, and RAG-based querying using Milvus as the vector database.
 
 ## 🎯 Features
 
-- **PDF Upload**: Upload PDF files and extract text
+- **Multi-Format Document Upload**: Upload various document formats (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV, Images) and extract text
 - **Embedding Generation**: Generate embeddings using OpenAI's `text-embedding-3-small` model
 - **Vector Storage**: Store embeddings in Milvus with HNSW index
 - **RAG Querying**: Query documents using vector similarity search and LLM-based answer generation
+- **Cosine Similarity**: View cosine similarity scores to understand how queries match document chunks
 - **Vector Inspection**: Inspect stored vectors for educational purposes
 
 ## 🏗 Tech Stack
@@ -16,7 +17,8 @@ A minimal viable product for PDF upload, text extraction, embedding generation, 
 - **Milvus**: Vector database (standalone)
 - **PyMilvus**: Milvus Python SDK
 - **OpenAI**: Embeddings and chat completion
-- **pypdf**: PDF text extraction
+- **Docling**: Multi-format document processing (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV, Images)
+- **pypdf**: PDF text extraction (fallback)
 
 ## 📋 Prerequisites
 
@@ -109,12 +111,25 @@ You'll see a beautiful web interface where you can:
 
 ## 📖 API Endpoints
 
-### 1. Upload PDF
+### 1. Upload Document
 
-Upload a PDF file and store its embeddings in Milvus.
+Upload a document file (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV, or Images) and store its embeddings in Milvus.
+
+**Supported Formats:**
+- Documents: PDF, DOCX, PPTX, XLSX
+- Web: HTML, Markdown
+- Data: CSV
+- Images: PNG, JPEG, TIFF, BMP, WEBP (with OCR)
 
 ```bash
+# Upload a PDF
 curl -X POST -F "file=@demo.pdf" http://localhost:8000/upload-pdf
+
+# Upload a Word document
+curl -X POST -F "file=@document.docx" http://localhost:8000/upload-pdf
+
+# Upload an image (with OCR)
+curl -X POST -F "file=@image.png" http://localhost:8000/upload-pdf
 ```
 
 **Response:**
@@ -253,6 +268,8 @@ Index: HNSW with L2 distance metric
 - Chunks are created with 1000 character size and 200 character overlap by default
 - Uses OpenAI's `text-embedding-3-small` model (1536 dimensions)
 - Uses GPT-3.5-turbo for answer generation
+- Docling handles OCR for images and scanned documents automatically
+- Multiple document formats are supported through Docling's conversion pipeline
 
 ## 🐛 Troubleshooting
 
