@@ -1,6 +1,6 @@
 ## Goal
 
-Rebuild this **Multi-Format Document RAG with Milvus** project in a fresh repo, keeping the same features and architecture but without copying files blindly. Use this document as the single source of truth for structure, stack, and behaviors.
+Use this document as the single source of truth for structure, stack, and behaviors.
 
 ---
 
@@ -16,8 +16,6 @@ Rebuild this **Multi-Format Document RAG with Milvus** project in a fresh repo, 
 ---
 
 ## Project Structure (target)
-
-Replicate this structure in the new project:
 
 - `app/`
   - `main.py` – FastAPI app, routes, startup logic, static UI mounting
